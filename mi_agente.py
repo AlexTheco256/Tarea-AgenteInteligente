@@ -33,7 +33,7 @@ Valores posibles de cada dirección:
 Si tu agente retorna un movimiento inválido (hacia pared o
 fuera del mapa), simplemente se queda en su lugar.
 """
-
+import random
 from entorno import Agente
 
 
@@ -52,8 +52,13 @@ class MiAgente(Agente):
         #   self.pasos = 0
         #   self.memoria = {}
 
+        self.memoria = {}
+        self.ultima_pos = None # Nueva memoria para no retroceder
+
     def al_iniciar(self):
         """Se llama una vez al iniciar la simulación. Opcional."""
+        self.memoria = {}
+        self.ultima_pos = None
         pass
 
     def decidir(self, percepcion):
@@ -81,6 +86,7 @@ class MiAgente(Agente):
         #     return horiz
         #
         # return 'abajo'
+        """"
         print('Hola decidir')
         for direccion in self.ACCIONES:
             celda = percepcion[direccion]
@@ -90,3 +96,53 @@ class MiAgente(Agente):
                 return direccion
 
         return 'abajo'  # ← Reemplazar con tu lógica
+        """
+
+        pos_actual = percepcion.get('posicion')
+        
+        # 1. Registrar visita (Costo de utilidad)
+        self.memoria[pos_actual] = self.memoria.get(pos_actual, 0) + 1
+        
+        # 2. Prioridad Absoluta: ¡La Meta!
+        for d in self.ACCIONES:
+            if percepcion.get(d) == 'meta':
+                return d
+        
+        # 3. ANALIZAR ALREDEDORES Y CALCULAR UTILIDAD
+        opciones_validas = []
+        mejor_utilidad = float('inf')
+
+        for d in self.ACCIONES:
+            estado = percepcion.get(d)
+            
+            # Solo consideramos celdas que NO sean paredes ni bordes (None)
+            if estado == 'libre':
+                dr, dc = self.DELTAS[d]
+                pos_futura = (pos_actual[0] + dr, pos_actual[1] + dc)
+                
+                # --- ALGORITMO DE EFICIENCIA ---
+                # Consultamos visitas previas
+                visitas = self.memoria.get(pos_futura, 0)
+                
+                # Penalización por retroceso (evita el "ping-pong" en pasillos)
+                costo_retroceso = 10 if pos_futura == self.ultima_pos else 0
+                
+                # Calculamos el peso total (A menor peso, mayor utilidad)
+                peso_total = visitas + costo_retroceso
+
+                if peso_total < mejor_utilidad:
+                    mejor_utilidad = peso_total
+                    opciones_validas = [d]
+                elif peso_total == mejor_utilidad:
+                    opciones_validas.append(d)
+
+        # 4. DECISIÓN Y CAMBIO DE DIRECCIÓN
+        if opciones_validas:
+            # Si hay varias opciones con igual utilidad, el random ayuda a 
+            # "cambiar de dirección" para explorar nuevas áreas.
+            accion_elegida = random.choice(opciones_validas)
+            self.ultima_pos = pos_actual 
+            return accion_elegida
+
+        # 5. Si está bloqueado por todos lados (no debería pasar), baja
+        return 'abajo'
