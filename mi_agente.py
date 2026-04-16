@@ -52,13 +52,13 @@ class MiAgente(Agente):
         #   self.pasos = 0
         #   self.memoria = {}
 
-        self.memoria = {}
-        self.ultima_pos = None # Nueva memoria para no retroceder
+        self.visitados = set()#guarda las posiciones visitadas
+        self.ultima_accion = None #guarda la última acción tomada
 
     def al_iniciar(self):
         """Se llama una vez al iniciar la simulación. Opcional."""
-        self.memoria = {}
-        self.ultima_pos = None
+        self.visitados = set() #reiniciar el registro de posiciones visitadas al iniciar
+        self.ultima_accion = None #reiniciar la última acción al iniciar
         pass
 
     def decidir(self, percepcion):
@@ -86,63 +86,46 @@ class MiAgente(Agente):
         #     return horiz
         #
         # return 'abajo'
-        """"
-        print('Hola decidir')
-        for direccion in self.ACCIONES:
-            celda = percepcion[direccion]
-            if celda == 'meta':
-                return direccion
-            if celda == 'libre':
-                return direccion
 
-        return 'abajo'  # ← Reemplazar con tu lógica
-        """
+        pos_actual = percepcion['posicion'] # Mira que hay en esta direccion
+        self.visitados.add(pos_actual) # Registro de rastro
 
-        pos_actual = percepcion.get('posicion')
-        
-        # 1. Registrar visita (Costo de utilidad)
-        self.memoria[pos_actual] = self.memoria.get(pos_actual, 0) + 1
-        
-        # 2. Prioridad Absoluta: ¡La Meta!
-        for d in self.ACCIONES:
-            if percepcion.get(d) == 'meta':
-                return d
-        
-        # 3. ANALIZAR ALREDEDORES Y CALCULAR UTILIDAD
-        opciones_validas = []
-        mejor_utilidad = float('inf')
+        # 1. META: Prioridad absoluta
+        for a in self.ACCIONES: # Revisar cada dirección posible
+            if percepcion[a] == 'meta': return a
 
-        for d in self.ACCIONES:
-            estado = percepcion.get(d)
-            
-            # Solo consideramos celdas que NO sean paredes ni bordes (None)
-            if estado == 'libre':
-                dr, dc = self.DELTAS[d]
-                pos_futura = (pos_actual[0] + dr, pos_actual[1] + dc)
+        # 2. EVALUAR CAMINOS (Nuevos vs Viejos)
+        caminos_nuevos = []#guarda las direcciones que el agente no ha visitado antes
+        caminos_viejos = []#guarda las direcciones que el agente ya ha visitado antes
+
+        for a in self.ACCIONES:
+            if percepcion[a] == 'libre':
+                fila, colum = self.DELTAS[a]
+                pos_futura = (pos_actual[0] + fila, pos_actual[1] + colum)
                 
-                # --- ALGORITMO DE EFICIENCIA ---
-                # Consultamos visitas previas
-                visitas = self.memoria.get(pos_futura, 0)
-                
-                # Penalización por retroceso (evita el "ping-pong" en pasillos)
-                costo_retroceso = 10 if pos_futura == self.ultima_pos else 0
-                
-                # Calculamos el peso total (A menor peso, mayor utilidad)
-                peso_total = visitas + costo_retroceso
+                if pos_futura not in self.visitados:
+                    caminos_nuevos.append(a)
+                else:
+                    caminos_viejos.append(a)
 
-                if peso_total < mejor_utilidad:
-                    mejor_utilidad = peso_total
-                    opciones_validas = [d]
-                elif peso_total == mejor_utilidad:
-                    opciones_validas.append(d)
+        # 3. LÓGICA DE DECISIÓN
 
-        # 4. DECISIÓN Y CAMBIO DE DIRECCIÓN
-        if opciones_validas:
-            # Si hay varias opciones con igual utilidad, el random ayuda a 
-            # "cambiar de dirección" para explorar nuevas áreas.
-            accion_elegida = random.choice(opciones_validas)
-            self.ultima_pos = pos_actual 
-            return accion_elegida
+        # SI HAY CAMINOS NUEVOS:
+        if caminos_nuevos:
+            # Intentar seguir recto si la dirección anterior es NUEVA
+            if self.ultima_accion in caminos_nuevos:
+                accion_elegida = self.ultima_accion
+            else:
+                # Si no, escoger un camino nuevo al azar
+                accion_elegida = random.choice(caminos_nuevos)
+        
+        # SI ES UN CALLEJÓN (No hay caminos nuevos, solo viejos):
+        elif caminos_viejos:
+            # Regresar por donde vino 
+            accion_elegida = random.choice(caminos_viejos)
+        
+        else:
+            accion_elegida = random.choice(self.ACCIONES)
 
-        # 5. Si está bloqueado por todos lados (no debería pasar), baja
-        return 'abajo'
+        self.ultima_accion = accion_elegida
+        return accion_elegida
