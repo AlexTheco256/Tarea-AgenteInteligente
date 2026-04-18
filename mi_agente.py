@@ -1,131 +1,126 @@
-"""
-mi_agente.py — Aquí defines tu agente.
-╔══════════════════════════════════════════════╗
-║  ✏️  EDITA ESTE ARCHIVO                      ║
-╚══════════════════════════════════════════════╝
-
-Tu agente debe:
-    1. Heredar de la clase Agente
-    2. Implementar el método decidir(percepcion)
-    3. Retornar: 'arriba', 'abajo', 'izquierda' o 'derecha'
-
-Lo que recibes en 'percepcion':
-───────────────────────────────
-percepcion = {
-    'posicion':       (3, 5),          # Tu fila y columna actual
-    'arriba':         'libre',         # Qué hay arriba
-    'abajo':          'pared',         # Qué hay abajo
-    'izquierda':      'libre',         # Qué hay a la izquierda
-    'derecha':        None,            # None = fuera del mapa
-
-    # OPCIONAL — brújula hacia la meta.
-    # No es percepción real del entorno, es información global.
-    # Usarla hace el ejercicio más fácil. No usarla es más realista.
-    'direccion_meta': ('abajo', 'derecha'),
-}
-
-Valores posibles de cada dirección:
-    'libre'  → puedes moverte ahí
-    'pared'  → bloqueado
-    'meta'   → ¡la meta! ve hacia allá
-    None     → borde del mapa, no puedes ir
-
-Si tu agente retorna un movimiento inválido (hacia pared o
-fuera del mapa), simplemente se queda en su lugar.
-"""
 import random
 from entorno import Agente
 
 
 class MiAgente(Agente):
-    """
-    Tu agente de navegación.
-
-    Implementa el método decidir() para que el agente
-    llegue del punto A al punto B en el grid.
-    """
 
     def __init__(self):
         super().__init__(nombre="Mi Agente")
-        # Puedes agregar atributos aquí si los necesitas.
-        # Ejemplo:
-        #   self.pasos = 0
-        #   self.memoria = {}
-
-        self.visitados = set()#guarda las posiciones visitadas
-        self.ultima_accion = None #guarda la última acción tomada
+        self.visitados = set()
+        self.ultima_accion = None
+        self.mapa_obstaculos = set()
 
     def al_iniciar(self):
-        """Se llama una vez al iniciar la simulación. Opcional."""
-        self.visitados = set() #reiniciar el registro de posiciones visitadas al iniciar
-        self.ultima_accion = None #reiniciar la última acción al iniciar
-        pass
+        self.visitados = set()
+        self.ultima_accion = None
+        self.mapa_obstaculos = set()
 
-    def decidir(self, percepcion):
-        
+    # ── Helpers ──────────────────────────────────────────────
+
+    def _pos_futura(self, pos, direccion):
+        """Calcula la posición resultante de moverse en 'direccion'."""
+        dy, dx = self.DELTAS[direccion]
+        return (pos[0] + dy, pos[1] + dx)
+
+    def _vecinos_obstaculo(self, pos):
         """
-        Decide la siguiente acción del agente.
-        
-        Parámetros:
-            percepcion – diccionario con lo que el agente puede ver
-
-        Retorna:
-            'arriba', 'abajo', 'izquierda' o 'derecha'
+        Cuenta cuántos de los 4 vecinos de 'pos' están en mapa_obstaculos.
+        Se usa como penalización: una celda rodeada de paredes es menos
+        deseable aunque esté 'libre'.
         """
-        # ╔══════════════════════════════════════╗
-        # ║   ESCRIBE TU LÓGICA AQUÍ             ║
-        # ╚══════════════════════════════════════╝
+        count = 0
+        for dy, dx in self.DELTAS.values():
+            vecino = (pos[0] + dy, pos[1] + dx)
+            if vecino in self.mapa_obstaculos:
+                count += 1
+        return count
 
-        # Ejemplo básico (bórralo y escribe tu propia lógica):
-        #
-        # vert, horiz = percepcion['direccion_meta']
-        #
-        # if percepcion[vert] == 'libre' or percepcion[vert] == 'meta':
-        #     return vert
-        # if percepcion[horiz] == 'libre' or percepcion[horiz] == 'meta':
-        #     return horiz
-        #
-        # return 'abajo'
+    def _score(self, pos):
+        """
+        Puntuación de una celda candidata.
+        Menor es mejor: premia no visitadas y penaliza vecindad con obstáculos.
+        """
+        ya_visitada  = 1 if pos in self.visitados else 0
+        peligro      = self._vecinos_obstaculo(pos)   # 0–4
+        return ya_visitada * 10 + peligro             # visitada pesa más
 
-        pos_actual = percepcion['posicion'] # Mira que hay en esta direccion
-        self.visitados.add(pos_actual) # Registro de rastro
+    # ── Percepción y registro ────────────────────────────────
 
-        # 1. META: Prioridad absoluta
-        for a in self.ACCIONES: # Revisar cada dirección posible
-            if percepcion[a] == 'meta': return a
+    def _registrar_obstaculos(self, pos_actual, percepcion):
+        """
+        Actualiza mapa_obstaculos con lo que el agente ve a su alrededor.
+        También filtra candidatos inválidos antes de que lleguen a decidir().
+        """
+        for direccion in self.ACCIONES:
+            estado = percepcion[direccion]
+            coord_vista = self._pos_futura(pos_actual, direccion)
+            if estado in ('pared', None):
+                self.mapa_obstaculos.add(coord_vista)
 
-        # 2. EVALUAR CAMINOS (Nuevos vs Viejos)
-        caminos_nuevos = []#guarda las direcciones que el agente no ha visitado antes
-        caminos_viejos = []#guarda las direcciones que el agente ya ha visitado antes
+    # ── Filtrado ─────────────────────────────────────────────
 
+    def _candidatos_validos(self, pos_actual, percepcion):
+        """
+        Devuelve solo las direcciones libres cuya posición futura
+        NO aparece ya en mapa_obstaculos (doble seguro además de la percepción).
+        """
+        validos = []
         for a in self.ACCIONES:
             if percepcion[a] == 'libre':
-                fila, colum = self.DELTAS[a]
-                pos_futura = (pos_actual[0] + fila, pos_actual[1] + colum)
-                
-                if pos_futura not in self.visitados:
-                    caminos_nuevos.append(a)
-                else:
-                    caminos_viejos.append(a)
+                pos_futura = self._pos_futura(pos_actual, a)
+                # USO 1: descartar candidatos que el mapa ya marca como obstáculo
+                if pos_futura not in self.mapa_obstaculos:
+                    validos.append(a)
+        return validos
 
-        # 3. LÓGICA DE DECISIÓN
+    # ── Decisión ─────────────────────────────────────────────
 
-        # SI HAY CAMINOS NUEVOS:
-        if caminos_nuevos:
-            # Intentar seguir recto si la dirección anterior es NUEVA
-            if self.ultima_accion in caminos_nuevos:
-                accion_elegida = self.ultima_accion
-            else:
-                # Si no, escoger un camino nuevo al azar
-                accion_elegida = random.choice(caminos_nuevos)
-        
-        # SI ES UN CALLEJÓN (No hay caminos nuevos, solo viejos):
-        elif caminos_viejos:
-            # Regresar por donde vino 
-            accion_elegida = random.choice(caminos_viejos)
-        
+    def decidir(self, percepcion):
+        pos_actual = percepcion['posicion']
+        self.visitados.add(pos_actual)
+
+        # Registrar obstáculos visibles
+        self._registrar_obstaculos(pos_actual, percepcion)
+
+        # 1. Prioridad absoluta: meta visible
+        for a in self.ACCIONES:
+            if percepcion[a] == 'meta':
+                self.ultima_accion = a
+                return a
+
+        # 2. Obtener candidatos (ya filtrados contra mapa_obstaculos)
+        candidatos = self._candidatos_validos(pos_actual, percepcion)
+
+        if not candidatos:
+            # Sin salida válida — retroceder por camino conocido
+            retroceso = [
+                a for a in self.ACCIONES
+                if percepcion[a] == 'libre'
+            ]
+            accion = random.choice(retroceso) if retroceso else random.choice(self.ACCIONES)
+            self.ultima_accion = accion
+            return accion
+
+        # 3. Separar nuevos vs. visitados
+        nuevos  = [a for a in candidatos
+                   if self._pos_futura(pos_actual, a) not in self.visitados]
+        viejos  = [a for a in candidatos
+                   if self._pos_futura(pos_actual, a) in self.visitados]
+
+        pool = nuevos if nuevos else viejos
+
+        # 4. Ordenar por score (USO 2: penalizar celdas rodeadas de obstáculos)
+        pool.sort(key=lambda a: self._score(self._pos_futura(pos_actual, a)))
+
+        # 5. Preferir continuar recto si está entre los mejores (mismo score mínimo)
+        score_min = self._score(self._pos_futura(pos_actual, pool[0]))
+        mejores   = [a for a in pool
+                     if self._score(self._pos_futura(pos_actual, a)) == score_min]
+
+        if self.ultima_accion in mejores:
+            accion = self.ultima_accion          # inercia: seguir recto
         else:
-            accion_elegida = random.choice(self.ACCIONES)
+            accion = mejores[0]                  # el de menor score
 
-        self.ultima_accion = accion_elegida
-        return accion_elegida
+        self.ultima_accion = accion
+        return accion
